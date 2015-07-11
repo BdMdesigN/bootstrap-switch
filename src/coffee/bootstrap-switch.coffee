@@ -23,6 +23,7 @@ do ($ = window.jQuery, window) ->
         baseClass: @$element.data "base-class"
         wrapperClass: @$element.data "wrapper-class"
       , options
+      @prevOptions = {}
       @$wrapper = $ "<div>",
         class: do =>
           classes = ["#{@options.baseClass}"].concat @_getClasses @options.wrapperClass
@@ -49,7 +50,13 @@ do ($ = window.jQuery, window) ->
 
       # set up events
       @$element.on "init.bootstrapSwitch", => @options.onInit.apply element, arguments
-      @$element.on "switchChange.bootstrapSwitch", => @options.onSwitchChange.apply element, arguments
+      @$element.on "switchChange.bootstrapSwitch", (e) =>
+        if false == @options.onSwitchChange.apply element, arguments
+          if @$element.is ":radio"
+            $("[name='#{@$element.attr('name')}']")
+            .trigger "previousState.bootstrapSwitch", true
+          else
+            @$element.trigger "previousState.bootstrapSwitch", true
 
       # reassign elements after dom modification
       @$container = @$element.wrap(@$container).parent()
@@ -74,19 +81,27 @@ do ($ = window.jQuery, window) ->
       @_formHandler()
       @_externalLabelHandler()
 
-      @$element.trigger "init.bootstrapSwitch"
+      @$element.trigger "init.bootstrapSwitch", @options.state
 
     _constructor: BootstrapSwitch
+
+    setPrevOptions: ->
+      @prevOptions = $.extend(true, {}, @options)
 
     state: (value, skip) ->
       return @options.state  if typeof value is "undefined"
       return @$element  if @options.disabled or @options.readonly
       return @$element  if @options.state and not @options.radioAllOff and @$element.is ":radio"
 
+      if @$element.is ":radio"
+        $("[name='#{@$element.attr('name')}']")
+        .trigger "setPreviousOptions.bootstrapSwitch"
+      else
+        @$element.trigger "setPreviousOptions.bootstrapSwitch"
+
       # remove indeterminate
       @indeterminate false  if @options.indeterminate
       value = not not value
-
       @$element.prop("checked", value).trigger "change.bootstrapSwitch", skip
       @$element
 
@@ -344,6 +359,7 @@ do ($ = window.jQuery, window) ->
 
     _init: ->
       init = =>
+        @setPrevOptions()
         @_width()
         @_containerPosition null, =>
           @$wrapper.addClass "#{@options.baseClass}-animate"  if @options.animate
@@ -358,6 +374,15 @@ do ($ = window.jQuery, window) ->
 
     _elementHandlers: ->
       @$element.on
+        "setPreviousOptions.bootstrapSwitch": (e) =>
+          @setPrevOptions()
+
+        "previousState.bootstrapSwitch": (e) =>
+          @options = @prevOptions
+
+          @$wrapper.addClass "#{@options.baseClass}-indeterminate"  if @options.indeterminate
+          @$element.prop("checked", @options.state).trigger "change.bootstrapSwitch", true
+
         "change.bootstrapSwitch": (e, skip) =>
           e.preventDefault()
           e.stopImmediatePropagation()
@@ -419,6 +444,9 @@ do ($ = window.jQuery, window) ->
 
     _labelHandlers: ->
       @$label.on
+        "click": (e) ->
+          e.stopPropagation()
+
         "mousedown.bootstrapSwitch touchstart.bootstrapSwitch": (e) =>
           return  if @_dragStart or @options.disabled or @options.readonly
 
